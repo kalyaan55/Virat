@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Kalyaan Color Prediction</title>
+
+<link rel="stylesheet" href="style.css">
+
+<style>
+
+body{
+font-family:Poppins;
+background:#f4f6ff;
+margin:0;
+padding:0;
+}
+
+.header{
+background:white;
+padding:15px;
+display:flex;
+justify-content:space-between;
+align-items:center;
+box-shadow:0 2px 8px rgba(0,0,0,0.08);
+}
+
+.balance{
+font-weight:700;
+color:#6c3bff;
+}
+
+.period-bar{
+background:white;
+margin:15px;
+padding:15px;
+border-radius:10px;
+display:flex;
+justify-content:space-between;
+}
+
+.timer{
+font-size:26px;
+font-weight:700;
+color:#6c3bff;
+}
+
+.bet-area{
+background:white;
+margin:15px;
+padding:20px;
+border-radius:12px;
+}
+
+.color-grid{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:10px;
+margin-bottom:20px;
+}
+
+.color-btn{
+padding:14px;
+border:none;
+border-radius:10px;
+color:white;
+font-weight:700;
+cursor:pointer;
+}
+
+.red{background:#ef4444}
+.green{background:#10b981}
+.violet{background:#7c3aed}
+
+.number-grid{
+display:grid;
+grid-template-columns:repeat(5,1fr);
+gap:10px;
+}
+
+.num{
+background:#eee;
+border:none;
+padding:15px;
+border-radius:8px;
+font-weight:700;
+cursor:pointer;
+}
+
+.history{
+background:white;
+margin:15px;
+padding:15px;
+border-radius:10px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+
+<div class="header">
+
+<div>Color Prediction</div>
+
+<div class="balance" id="balance">₹0</div>
+
+</div>
+
+
+
+<div class="period-bar">
+
+<div>
+
+Period<br>
+<span id="period">...</span>
+
+</div>
+
+<div>
+
+Time Left<br>
+<div class="timer" id="timer">30</div>
+
+</div>
+
+</div>
+
+
+
+<div class="bet-area">
+
+<h3>Choose Color</h3>
+
+<div class="color-grid">
+
+<button class="color-btn red" onclick="placeBet('color','red',2)">Red</button>
+
+<button class="color-btn violet" onclick="placeBet('color','violet',4.5)">Violet</button>
+
+<button class="color-btn green" onclick="placeBet('color','green',2)">Green</button>
+
+</div>
+
+
+<h3>Choose Number</h3>
+
+<div class="number-grid">
+
+<button class="num" onclick="placeBet('number',0,9)">0</button>
+<button class="num" onclick="placeBet('number',1,9)">1</button>
+<button class="num" onclick="placeBet('number',2,9)">2</button>
+<button class="num" onclick="placeBet('number',3,9)">3</button>
+<button class="num" onclick="placeBet('number',4,9)">4</button>
+<button class="num" onclick="placeBet('number',5,9)">5</button>
+<button class="num" onclick="placeBet('number',6,9)">6</button>
+<button class="num" onclick="placeBet('number',7,9)">7</button>
+<button class="num" onclick="placeBet('number',8,9)">8</button>
+<button class="num" onclick="placeBet('number',9,9)">9</button>
+
+</div>
+
+</div>
+
+
+
+<div class="history">
+
+<h3>Recent Results</h3>
+
+<div id="historyList">
+
+Loading...
+
+</div>
+
+</div>
+
+
+
+<script type="module">
+
+import {
+
+db,
+ref,
+get,
+push,
+update,
+getUser,
+updateUser,
+addGameHistory,
+getGameHistory,
+getGameState,
+setGameState
+
+} from "./firebase-config.js"
+
+
+
+let uid = localStorage.getItem("uid")
+
+let wallet = 0
+
+let currentPeriod = 0
+
+let endTime = 0
+
+let myBets = []
+
+
+
+const numColors = {
+
+0:["red","violet"],
+1:["green"],
+2:["red"],
+3:["green"],
+4:["red"],
+5:["red","violet"],
+6:["green"],
+7:["red"],
+8:["green"],
+9:["red"]
+
+}
+
+
+
+async function init(){
+
+const user = await getUser(uid)
+
+wallet = user.balance || 0
+
+document.getElementById("balance").innerText="₹"+wallet
+
+const state = await getGameState()
+
+currentPeriod = state.period
+endTime = state.endTime
+
+document.getElementById("period").innerText="#"+currentPeriod
+
+loadHistory()
+
+}
+
+
+
+init()
+
+
+
+setInterval(async()=>{
+
+const state = await getGameState()
+
+currentPeriod = state.period
+
+endTime = state.endTime
+
+document.getElementById("period").innerText="#"+currentPeriod
+
+const timeLeft = Math.floor((endTime-Date.now())/1000)
+
+document.getElementById("timer").innerText = timeLeft>0?timeLeft:0
+
+if(timeLeft<=0){
+
+draw()
+
+}
+
+},1000)
+
+
+
+async function draw(){
+
+const state = await getGameState()
+
+let num
+
+if(state.forcedNumber!=null){
+
+num = state.forcedNumber
+
+}else{
+
+num = Math.floor(Math.random()*10)
+
+}
+
+const cols = numColors[num]
+
+const color = cols[Math.floor(Math.random()*cols.length)]
+
+const size = num>=5?"Big":"Small"
+
+
+
+await addGameHistory({
+
+period:currentPeriod,
+number:num,
+color,
+size,
+time:Date.now()
+
+})
+
+
+
+settleBets(num,color,size)
+
+
+
+await setGameState({
+
+period:currentPeriod+1,
+endTime:Date.now()+30000,
+forcedNumber:null
+
+})
+
+}
+
+
+
+async function settleBets(num,color,size){
+
+for(let b of myBets){
+
+if(b.period!=currentPeriod) continue
+
+let win=false
+
+if(b.type=="color" && b.choice==color) win=true
+
+if(b.type=="number" && b.choice==num) win=true
+
+
+
+if(win){
+
+const winAmt = Math.floor(b.amount*b.mult)
+
+wallet += winAmt
+
+await updateUser(uid,{balance:wallet})
+
+alert("You won ₹"+winAmt)
+
+}else{
+
+alert("You lost ₹"+b.amount)
+
+}
+
+}
+
+
+
+document.getElementById("balance").innerText="₹"+wallet
+
+}
+
+
+
+window.placeBet = async function(type,choice,mult){
+
+const amount = parseInt(prompt("Enter bet amount"))
+
+if(!amount) return
+
+const user = await getUser(uid)
+
+if(user.balance < amount){
+
+alert("Insufficient balance")
+
+return
+
+}
+
+wallet -= amount
+
+await updateUser(uid,{balance:wallet})
+
+
+
+myBets.push({
+
+period:currentPeriod,
+type,
+choice,
+amount,
+mult
+
+})
+
+
+
+document.getElementById("balance").innerText="₹"+wallet
+
+}
+
+
+
+async function loadHistory(){
+
+const history = await getGameHistory()
+
+let html=""
+
+history.slice(0,10).forEach(r=>{
+
+html += `
+
+<div>
+
+#${r.period}
+|
+${r.number}
+|
+${r.color}
+
+</div>
+
+`
+
+})
+
+
+
+document.getElementById("historyList").innerHTML = html
+
+}
+
+
+
+</script>
+
+</body>
+</html>
